@@ -6,9 +6,9 @@ mod utils;
 use docopt::Docopt;
 use serde::Deserialize;
 
-const USAGE: &'static str = "
+const USAGE: &str = "
 Usage:
-    udpscatter server [--key <key>] <listen-addr> <listen-port-range>...
+    udpscatter server [--key <key>] <target-addr> <target-port> <listen-addr> <listen-port-range>...
     udpscatter client [--key <key>] <listen-addr> <listen-port> <server-addr> <server-port-range>...
 
 Options:
@@ -22,6 +22,8 @@ struct Args {
     arg_listen_port: u16,
     arg_server_addr: String,
     arg_server_port_range: Vec<String>,
+    arg_target_addr: String,
+    arg_target_port: u16,
     flag_key: String,
     cmd_server: bool,
     cmd_client: bool,
@@ -33,20 +35,23 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
     //println!("{:?}", args);
 
-    let mut crypto_ctx: Option<crypto::Ctx> = None;
-    if args.flag_key.len() > 0 {
-        crypto_ctx = Some(
+    let crypto_ctx: Option<crypto::Ctx> = if args.flag_key.is_empty() {
+        None
+    } else {
+        Some(
             crypto::new_ctx(args.flag_key.as_str().as_bytes()).unwrap_or_else(|e| {
                 eprintln!("Failed to create crypto context with error: {}", e);
                 std::process::exit(1)
             }),
-        );
-    }
+        )
+    };
 
     if args.cmd_server {
         let server = server::new(
             &args.arg_listen_addr,
             &args.arg_listen_port_range,
+            &args.arg_target_addr,
+            args.arg_target_port,
             &crypto_ctx,
         )
         .unwrap_or_else(|e| {

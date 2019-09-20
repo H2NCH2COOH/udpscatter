@@ -1,5 +1,5 @@
-pub fn compile_port_range(range: &Vec<String>) -> Result<Vec<u16>, &'static str> {
-    if range.len() == 0 {
+pub fn compile_port_range(range: &[String]) -> Result<Vec<u16>, &'static str> {
+    if range.is_empty() {
         return Err("No range is present");
     }
 
@@ -10,7 +10,7 @@ pub fn compile_port_range(range: &Vec<String>) -> Result<Vec<u16>, &'static str>
             match ss.len() {
                 1 => {
                     //Single number
-                    let p: u16 = ss[0].parse().map_err(|e| "Invalid single port number")?;
+                    let p: u16 = ss[0].parse().map_err(|_e| "Invalid single port number")?;
                     if p == 0 {
                         Err("Port number is 0")
                     } else {
@@ -18,8 +18,8 @@ pub fn compile_port_range(range: &Vec<String>) -> Result<Vec<u16>, &'static str>
                     }
                 }
                 2 => {
-                    let p1: u16 = ss[0].parse().map_err(|e| "Invalid low port number")?;
-                    let p2: u16 = ss[1].parse().map_err(|e| "Invalid high port number")?;
+                    let p1: u16 = ss[0].parse().map_err(|_e| "Invalid low port number")?;
+                    let p2: u16 = ss[1].parse().map_err(|_e| "Invalid high port number")?;
                     if p2 < p1 {
                         Err("High port number is lower then low port number")
                     } else if p1 == 0 {
