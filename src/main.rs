@@ -52,12 +52,13 @@ fn main() {
             &args.arg_listen_port_range,
             &args.arg_target_addr,
             args.arg_target_port,
-            &crypto_ctx,
+            crypto_ctx.as_ref(),
         )
         .unwrap_or_else(|e| {
             eprintln!("Failed to create server with error: {}", e);
             std::process::exit(1)
         });
+
         server.run();
     } else {
         let client = client::new(
@@ -65,12 +66,13 @@ fn main() {
             args.arg_listen_port,
             &args.arg_server_addr,
             &args.arg_server_port_range,
-            &crypto_ctx,
+            crypto_ctx.as_ref(),
         )
         .unwrap_or_else(|e| {
             eprintln!("Failed to create client with error: {}", e);
             std::process::exit(1)
         });
+
         client.run();
     }
 }
