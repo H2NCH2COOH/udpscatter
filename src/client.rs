@@ -65,7 +65,7 @@ impl Client<'_> {
         //tokio::run(future::lazy(|| self.start_listen()));
     }
 
-    fn f(&self) -> impl Future {
+    fn f(&self) ->  {
         let mut buff = [0u8; 2000];
         self.listen_sock
             .recv_dgram(buff.as_mut())
