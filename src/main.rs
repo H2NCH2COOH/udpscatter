@@ -1,3 +1,5 @@
+#![feature(async_await)]
+
 mod client;
 mod crypto;
 mod server;
@@ -46,33 +48,35 @@ fn main() {
         )
     };
 
-    if args.cmd_server {
-        let server = server::new(
-            &args.arg_listen_addr,
-            &args.arg_listen_port_range,
-            &args.arg_target_addr,
-            args.arg_target_port,
-            crypto_ctx.as_ref(),
-        )
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to create server with error: {}", e);
-            std::process::exit(1)
-        });
+    let rt = tokio::runtime::Runtime::new().unwrap();
 
-        server.run();
-    } else {
-        let client = client::new(
-            &args.arg_listen_addr,
-            args.arg_listen_port,
-            &args.arg_server_addr,
-            &args.arg_server_port_range,
-            crypto_ctx.as_ref(),
-        )
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to create client with error: {}", e);
-            std::process::exit(1)
-        });
+    rt.block_on(async {
+        if args.cmd_server {
+            /*
+            let server = server::new(
+                &args.arg_listen_addr,
+                &args.arg_listen_port_range,
+                &args.arg_target_addr,
+                args.arg_target_port,
+                crypto_ctx,
+            )
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to create server with error: {}", e);
+                std::process::exit(1)
+            });
 
-        client.run();
-    }
+            server.run();
+            */
+        } else {
+            client::run(
+                &args.arg_listen_addr,
+                args.arg_listen_port,
+                &args.arg_server_addr,
+                &args.arg_server_port_range,
+                crypto_ctx,
+            )
+            .await
+            .unwrap_or_else(|e| eprintln!("Client exited with error: {}", e))
+        }
+    });
 }

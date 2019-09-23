@@ -1,34 +1,32 @@
 use crate::crypto;
 use crate::utils;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::{Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use tokio::net::UdpSocket;
 use tokio::prelude::*;
 
-pub struct Client<'a> {
-    crypto_ctx: Option<&'a crypto::Ctx<'a>>,
-    listen_sock: UdpSocket,
+struct ClientCtx {
     server_addr: IpAddr,
     server_ports: Vec<u16>,
-    client_socks: Vec<UdpSocket>,
+    crypto_ctx: Option<crypto::Ctx>,
     peer_addr: RwLock<Option<SocketAddr>>,
-    tx_buff: Mutex<[u8; 2000]>,
-    rx_buff: Mutex<[u8; 2000]>,
 }
 
-pub fn new<'a>(
+pub async fn run(
     listen_addr: &String,
     listen_port: u16,
     server_addr: &String,
     server_port_range: &[String],
-    crypto_ctx: Option<&'a crypto::Ctx>,
-) -> Result<Client<'a>, &'static str> {
+    crypto_ctx: Option<crypto::Ctx>,
+) -> Result<(), &'static str> {
     let ipaddr: IpAddr = listen_addr.parse().map_err(|_e| "Invalid listen address")?;
     if listen_port == 0 {
         return Err("Invalid listen port");
     }
     let sockaddr = SocketAddr::new(ipaddr, listen_port);
-    let listen_sock = UdpSocket::bind(&sockaddr).map_err(|_e| "Failed to create listen socket")?;
+    let listen_sock = UdpSocket::bind(&sockaddr)
+        .await
+        .map_err(|_e| "Failed to create listen socket")?;
 
     let server_addr: IpAddr = server_addr.parse().map_err(|_e| "Invalid server address")?;
     let server_ports = utils::compile_port_range(server_port_range)?;
@@ -38,42 +36,67 @@ pub fn new<'a>(
     } else {
         SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0)), 0)
     };
-    let client_socks: Vec<UdpSocket> = server_ports
-        .iter()
-        .map(|_p| UdpSocket::bind(&bind_addr).map_err(|_e| "Failed to create client socket"))
-        .collect::<Result<_, _>>()?;
 
     let peer_addr = RwLock::new(None);
 
-    let tx_buff = Mutex::new([0u8; 2000]);
-    let rx_buff = Mutex::new([0u8; 2000]);
+    let ctx = Arc::new(ClientCtx {
+        server_addr: server_addr,
+        server_ports: server_ports,
+        crypto_ctx: crypto_ctx,
+        peer_addr: peer_addr,
+    });
 
-    Ok(Client {
-        crypto_ctx,
-        listen_sock,
-        server_addr,
-        server_ports,
-        client_socks,
-        peer_addr,
-        tx_buff,
-        rx_buff,
-    })
-}
-
-impl Client<'_> {
-    pub fn run(self) {
-        //tokio::run(future::lazy(|| self.start_listen()));
+    for _ in 0..ctx.server_ports.len() {
+        let s = UdpSocket::bind(&bind_addr)
+            .await
+            .map_err(|_e| "Failed to create client socket")?;
+        tokio::spawn(run_client_socket(ctx.clone(), s));
     }
 
-    fn f(&self) ->  {
-        let mut buff = [0u8; 2000];
-        self.listen_sock
-            .recv_dgram(buff.as_mut())
-            .and_then(|(_, buff, len, peer_addr)| {
-                let mut p = self.peer_addr.write().unwrap();
-                *p = Some(peer_addr);
+    run_listen_socket(ctx, listen_sock).await;
 
-                self.f()
-            })
+    Ok(())
+}
+
+async fn run_client_socket(ctx: Arc<ClientCtx>, mut sock: UdpSocket) {
+    loop {
+        let mut buff = [0u8; 2000];
+        let rst = sock.recv_from(&mut buff).await;
+        match rst {
+            Ok((len, _)) => {
+                if let Some(c) = ctx.crypto_ctx {
+                    c.decrypt(&buff[0..len]);
+                }
+
+            }
+            Err(e) => {
+                eprintln!(
+                    "Failed to receive packet from client socket with error: {}",
+                    e
+                );
+                break;
+            }
+        }
+    }
+}
+
+async fn run_listen_socket(ctx: Arc<ClientCtx>, mut sock: UdpSocket) {
+    loop {
+        let mut buff = [0u8; 2000];
+        let rst = sock.recv_from(&mut buff).await;
+        match rst {
+            Ok((len, peer_addr)) => {
+                let mut p = ctx.peer_addr.write().unwrap();
+                *p = Some(peer_addr);
+                //send_to_server(ctx, buff, len).await;
+            }
+            Err(e) => {
+                eprintln!(
+                    "Failed to receive packet from listening socket with error: {}",
+                    e
+                );
+                break;
+            }
+        }
     }
 }
